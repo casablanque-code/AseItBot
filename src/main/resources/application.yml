@@ -1,0 +1,13 @@
+telegram:
+  bot:
+    username: ase_it_bot
+    token: 7860811516:AAErBlfuPiy1BGHor453iODReiuSizWrUZc
+
+telegrambots:
+  enabled: true
+  bots:
+    - username: ${telegram.bot.username}
+      token: ${telegram.bot.token}
+
+server:
+  port: 9090
