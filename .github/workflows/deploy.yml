@@ -1,0 +1,54 @@
+name: Deploy to VPS (AseItBot)
+
+on:
+  workflow_run:
+    workflows: ["Build & Push Docker image (GHCR)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Docker tag to deploy (latest or sha-xxxxxxx)"
+        required: true
+        default: "latest"
+
+concurrency:
+  group: deploy-aseitbot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Deploy on VPS
+        env:
+          SSH_HOST: ${{ secrets.VPS_HOST }}
+          SSH_USER: ${{ secrets.VPS_USER }}
+          SSH_PORT: ${{ secrets.VPS_SSH_PORT }}
+          APP_DIR: /root/ase-it-bot
+          TAG: ${{ github.event.inputs.tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          : "${SSH_HOST:?VPS_HOST is required}"
+          : "${SSH_USER:?VPS_USER is required}"
+          PORT="${SSH_PORT:-22}"
+
+          ssh -o StrictHostKeyChecking=no -p "$PORT" "$SSH_USER@$SSH_HOST" bash -lc '
+            set -euo pipefail
+            cd "'"$APP_DIR"'" || { echo "APP_DIR not found"; exit 1; }
+
+            # Подменим тег, если в compose уже указан какой-то тег
+            if grep -qE "image:\s*ghcr\.io/.+:.+" docker-compose.prod.yml; then
+              sed -i "s#^\(\s*image:\s*ghcr\.io/.\+:\).*#\1'"$TAG"'#g" docker-compose.prod.yml
+            fi
+
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            docker compose -f docker-compose.prod.yml ps
+          '
