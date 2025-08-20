@@ -1,15 +1,14 @@
-# Этап сборки (Gradle)
-FROM gradle:8.7-jdk17 AS build
+# ===== build stage =====
+FROM gradle:8.10.0-jdk21 AS build
 WORKDIR /app
 COPY . .
-RUN gradle bootJar --no-daemon
+# если у тебя есть тесты, и они долгие — можно добавить -x test
+RUN gradle --no-daemon clean bootJar
 
-# Этап рантайма
-FROM eclipse-temurin:17-jre-alpine
+# ===== runtime stage =====
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
-
-# Порт — если бот слушает HTTP (иначе можно убрать)
-#EXPOSE 8080
-
-ENTRYPOINT ["java","-jar","app.jar"]
+ENV JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8"
+EXPOSE 8080 8081
+ENTRYPOINT ["java","-jar","/app/app.jar"]
